@@ -4,8 +4,8 @@ import {
   tip,
   toArray,
   hyphenate,
-  handleError,
-  formatComponentName
+  formatComponentName,
+  invokeWithErrorHandling
 } from '../util/index'
 import { updateListeners } from '../vdom/helpers/index'
 
@@ -19,18 +19,28 @@ export function initEvents (vm: Component) {
   }
 }
 
-let target: Component
-
-function add (event, fn, once) {
-  if (once) {
-    target.$once(event, fn)
-  } else {
-    target.$on(event, fn)
-  }
+let target: any
+/**
+ * 添加自定义事件
+ */
+function add (event, fn) {
+  target.$on(event, fn)
 }
-
+/**
+ * 删除自定义事件
+ */
 function remove (event, fn) {
   target.$off(event, fn)
+}
+
+function createOnceHandler (event, fn) {
+  const _target = target
+  return function onceHandler () {
+    const res = fn.apply(null, arguments)
+    if (res !== null) {
+      _target.$off(event, onceHandler)
+    }
+  }
 }
 
 export function updateComponentListeners (
@@ -39,16 +49,19 @@ export function updateComponentListeners (
   oldListeners: ?Object
 ) {
   target = vm
-  updateListeners(listeners, oldListeners || {}, add, remove, vm)
+  updateListeners(listeners, oldListeners || {}, add, remove, createOnceHandler, vm)
+  target = undefined
 }
-
+/**
+ * Vue的事件中心
+ */
 export function eventsMixin (Vue: Class<Component>) {
   const hookRE = /^hook:/
   Vue.prototype.$on = function (event: string | Array<string>, fn: Function): Component {
     const vm: Component = this
     if (Array.isArray(event)) {
       for (let i = 0, l = event.length; i < l; i++) {
-        this.$on(event[i], fn)
+        vm.$on(event[i], fn)
       }
     } else {
       (vm._events[event] || (vm._events[event] = [])).push(fn)
@@ -82,7 +95,7 @@ export function eventsMixin (Vue: Class<Component>) {
     // array of events
     if (Array.isArray(event)) {
       for (let i = 0, l = event.length; i < l; i++) {
-        this.$off(event[i], fn)
+        vm.$off(event[i], fn)
       }
       return vm
     }
@@ -91,20 +104,18 @@ export function eventsMixin (Vue: Class<Component>) {
     if (!cbs) {
       return vm
     }
-    if (arguments.length === 1) {
+    if (!fn) {
       vm._events[event] = null
       return vm
     }
-    if (fn) {
-      // specific handler
-      let cb
-      let i = cbs.length
-      while (i--) {
-        cb = cbs[i]
-        if (cb === fn || cb.fn === fn) {
-          cbs.splice(i, 1)
-          break
-        }
+    // specific handler
+    let cb
+    let i = cbs.length
+    while (i--) {
+      cb = cbs[i]
+      if (cb === fn || cb.fn === fn) {
+        cbs.splice(i, 1)
+        break
       }
     }
     return vm
@@ -124,16 +135,19 @@ export function eventsMixin (Vue: Class<Component>) {
         )
       }
     }
+    /**
+     * 触发$emit，触发的回调函数是定义在父组件上的
+     *
+     * @param     {boolean}    xx     []
+     * @returns    {undefined}      无
+     */
     let cbs = vm._events[event]
     if (cbs) {
       cbs = cbs.length > 1 ? toArray(cbs) : cbs
       const args = toArray(arguments, 1)
+      const info = `event handler for "${event}"`
       for (let i = 0, l = cbs.length; i < l; i++) {
-        try {
-          cbs[i].apply(vm, args)
-        } catch (e) {
-          handleError(e, vm, `event handler for "${event}"`)
-        }
+        invokeWithErrorHandling(cbs[i], vm, args, vm, info)
       }
     }
     return vm

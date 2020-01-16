@@ -1,16 +1,16 @@
 /* @flow */
 
 import config from '../config'
-import Dep from '../observer/dep'
 import Watcher from '../observer/watcher'
+import Dep, { pushTarget, popTarget } from '../observer/dep'
 import { isUpdatingChildComponent } from './lifecycle'
 
 import {
   set,
   del,
   observe,
-  observerState,
-  defineReactive
+  defineReactive,
+  toggleObserving
 } from '../observer/index'
 
 import {
@@ -36,26 +36,37 @@ const sharedPropertyDefinition = {
 }
 
 export function proxy (target: Object, sourceKey: string, key: string) {
+  /* proxy(vm, `_data`, key)，可以看出get直接输出vm._data.key的值 */
   sharedPropertyDefinition.get = function proxyGetter () {
     return this[sourceKey][key]
   }
+  /* 把val（新值）附给vm._data.key */
   sharedPropertyDefinition.set = function proxySetter (val) {
     this[sourceKey][key] = val
   }
+  /* 最后用sharedPropertyDefinition去描述vm的key属性 */
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
-
+/**
+ * 初始化状态
+ */
 export function initState (vm: Component) {
   vm._watchers = []
   const opts = vm.$options
+  /*初始化props*/
   if (opts.props) initProps(vm, opts.props)
+  /*初始化方法*/
   if (opts.methods) initMethods(vm, opts.methods)
+  /*初始化data*/
   if (opts.data) {
     initData(vm)
   } else {
+    /*该组件没有data的时候绑定一个空对象*/
     observe(vm._data = {}, true /* asRootData */)
   }
+  /*初始化computed*/
   if (opts.computed) initComputed(vm, opts.computed)
+  /*初始化watchers*/
   if (opts.watch && opts.watch !== nativeWatch) {
     initWatch(vm, opts.watch)
   }
@@ -69,7 +80,9 @@ function initProps (vm: Component, propsOptions: Object) {
   const keys = vm.$options._propKeys = []
   const isRoot = !vm.$parent
   // root instance props should be converted
-  observerState.shouldConvert = isRoot
+  if (!isRoot) {
+    toggleObserving(false)
+  }
   for (const key in propsOptions) {
     keys.push(key)
     const value = validateProp(key, propsOptions, propsData, vm)
@@ -84,7 +97,7 @@ function initProps (vm: Component, propsOptions: Object) {
         )
       }
       defineReactive(props, key, value, () => {
-        if (vm.$parent && !isUpdatingChildComponent) {
+        if (!isRoot && !isUpdatingChildComponent) {
           warn(
             `Avoid mutating a prop directly since the value will be ` +
             `overwritten whenever the parent component re-renders. ` +
@@ -101,10 +114,13 @@ function initProps (vm: Component, propsOptions: Object) {
     // during Vue.extend(). We only need to proxy props defined at
     // instantiation here.
     if (!(key in vm)) {
+      /**
+       * 把vm._props.key全都代理到vm.key上
+       */
       proxy(vm, `_props`, key)
     }
   }
-  observerState.shouldConvert = true
+  toggleObserving(true)
 }
 
 function initData (vm: Component) {
@@ -125,6 +141,7 @@ function initData (vm: Component) {
   const props = vm.$options.props
   const methods = vm.$options.methods
   let i = keys.length
+  //遍历data中的数据
   while (i--) {
     const key = keys[i]
     if (process.env.NODE_ENV !== 'production') {
@@ -135,6 +152,7 @@ function initData (vm: Component) {
         )
       }
     }
+    /*保证data中的key不与props中的key重复，props优先，如果有冲突会产生warning*/
     if (props && hasOwn(props, key)) {
       process.env.NODE_ENV !== 'production' && warn(
         `The data property "${key}" is already declared as a prop. ` +
@@ -142,25 +160,36 @@ function initData (vm: Component) {
         vm
       )
     } else if (!isReserved(key)) {
+      /**
+       * 把vm._data.key全都代理到vm.key上
+       */
       proxy(vm, `_data`, key)
     }
   }
   // observe data
+  /*从这里开始我们要observe了，开始对数据进行绑定，这里有尤大大的注释asRootData，这步作为根数据，下面会进行递归observe进行对深层对象的绑定。*/
   observe(data, true /* asRootData */)
 }
 
-function getData (data: Function, vm: Component): any {
+export function getData (data: Function, vm: Component): any {
+  // #7573 disable dep collection when invoking data getters
+  pushTarget()
   try {
     return data.call(vm, vm)
   } catch (e) {
     handleError(e, vm, `data()`)
     return {}
+  } finally {
+    popTarget()
   }
 }
 
 const computedWatcherOptions = { lazy: true }
-
+/**
+ * 初始化computed
+ */
 function initComputed (vm: Component, computed: Object) {
+  // $flow-disable-line
   const watchers = vm._computedWatchers = Object.create(null)
   // computed properties are just getters during SSR
   const isSSR = isServerRendering()
@@ -199,7 +228,11 @@ function initComputed (vm: Component, computed: Object) {
     }
   }
 }
-
+/**
+ * 定义计算属性
+ *
+ * @param     {Object | Function}    userDef     计算属性的值
+ */
 export function defineComputed (
   target: any,
   key: string,
@@ -209,17 +242,15 @@ export function defineComputed (
   if (typeof userDef === 'function') {
     sharedPropertyDefinition.get = shouldCache
       ? createComputedGetter(key)
-      : userDef
+      : createGetterInvoker(userDef)
     sharedPropertyDefinition.set = noop
   } else {
     sharedPropertyDefinition.get = userDef.get
       ? shouldCache && userDef.cache !== false
         ? createComputedGetter(key)
-        : userDef.get
+        : createGetterInvoker(userDef.get)
       : noop
-    sharedPropertyDefinition.set = userDef.set
-      ? userDef.set
-      : noop
+    sharedPropertyDefinition.set = userDef.set || noop
   }
   if (process.env.NODE_ENV !== 'production' &&
       sharedPropertyDefinition.set === noop) {
@@ -248,13 +279,19 @@ function createComputedGetter (key) {
   }
 }
 
+function createGetterInvoker(fn) {
+  return function computedGetter () {
+    return fn.call(this, this)
+  }
+}
+
 function initMethods (vm: Component, methods: Object) {
   const props = vm.$options.props
   for (const key in methods) {
     if (process.env.NODE_ENV !== 'production') {
-      if (methods[key] == null) {
+      if (typeof methods[key] !== 'function') {
         warn(
-          `Method "${key}" has an undefined value in the component definition. ` +
+          `Method "${key}" has type "${typeof methods[key]}" in the component definition. ` +
           `Did you reference the function correctly?`,
           vm
         )
@@ -272,10 +309,13 @@ function initMethods (vm: Component, methods: Object) {
         )
       }
     }
-    vm[key] = methods[key] == null ? noop : bind(methods[key], vm)
+    vm[key] = typeof methods[key] !== 'function' ? noop : bind(methods[key], vm)
   }
 }
 
+/**
+ * 初始化侦听
+ */
 function initWatch (vm: Component, watch: Object) {
   for (const key in watch) {
     const handler = watch[key]
@@ -291,7 +331,7 @@ function initWatch (vm: Component, watch: Object) {
 
 function createWatcher (
   vm: Component,
-  keyOrFn: string | Function,
+  expOrFn: string | Function,
   handler: any,
   options?: Object
 ) {
@@ -302,7 +342,7 @@ function createWatcher (
   if (typeof handler === 'string') {
     handler = vm[handler]
   }
-  return vm.$watch(keyOrFn, handler, options)
+  return vm.$watch(expOrFn, handler, options)
 }
 
 export function stateMixin (Vue: Class<Component>) {
@@ -314,7 +354,7 @@ export function stateMixin (Vue: Class<Component>) {
   const propsDef = {}
   propsDef.get = function () { return this._props }
   if (process.env.NODE_ENV !== 'production') {
-    dataDef.set = function (newData: Object) {
+    dataDef.set = function () {
       warn(
         'Avoid replacing instance root $data. ' +
         'Use nested data properties instead.',
@@ -344,7 +384,11 @@ export function stateMixin (Vue: Class<Component>) {
     options.user = true
     const watcher = new Watcher(vm, expOrFn, cb, options)
     if (options.immediate) {
-      cb.call(vm, watcher.value)
+      try {
+        cb.call(vm, watcher.value)
+      } catch (error) {
+        handleError(error, vm, `callback for immediate watcher "${watcher.expression}"`)
+      }
     }
     return function unwatchFn () {
       watcher.teardown()

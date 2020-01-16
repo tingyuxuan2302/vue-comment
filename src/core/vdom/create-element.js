@@ -3,12 +3,14 @@
 import config from '../config'
 import VNode, { createEmptyVNode } from './vnode'
 import { createComponent } from './create-component'
+import { traverse } from '../observer/traverse'
 
 import {
   warn,
   isDef,
   isUndef,
   isTrue,
+  isObject,
   isPrimitive,
   resolveAsset
 } from '../util/index'
@@ -23,6 +25,9 @@ const ALWAYS_NORMALIZE = 2
 
 // wrapper function for providing a more flexible interface
 // without getting yelled at by flow
+/**
+ * 封装的createElement，可传入一些灵活的参数，最后调用_createElement
+ */
 export function createElement (
   context: Component,
   tag: any,
@@ -30,7 +35,7 @@ export function createElement (
   children: any,
   normalizationType: any,
   alwaysNormalize: boolean
-): VNode {
+): VNode | Array<VNode> {
   if (Array.isArray(data) || isPrimitive(data)) {
     normalizationType = children
     children = data
@@ -42,13 +47,24 @@ export function createElement (
   return _createElement(context, tag, data, children, normalizationType)
 }
 
+/**
+ * 创建元素
+ *
+ * @param     {Component}    context     VNode上下文环境
+ * @param     {string}    tag     元素标签
+ * @param         data     VNode的数据
+ * @param         children     当前VNode的子节点
+ * @param         normalizationType     子节点规范的类型（参考 render 函数是编译生成的还是用户手写的。）
+ * @returns    vnode      创建的节点
+ */
 export function _createElement (
   context: Component,
   tag?: string | Class<Component> | Function | Object,
   data?: VNodeData,
   children?: any,
   normalizationType?: number
-): VNode {
+): VNode | Array<VNode> {
+  /* 当data具有__ob__属性的时候，代表它已经被观察observed */
   if (isDef(data) && isDef((data: any).__ob__)) {
     process.env.NODE_ENV !== 'production' && warn(
       `Avoid using observed data object as vnode data: ${JSON.stringify(data)}\n` +
@@ -69,11 +85,13 @@ export function _createElement (
   if (process.env.NODE_ENV !== 'production' &&
     isDef(data) && isDef(data.key) && !isPrimitive(data.key)
   ) {
-    warn(
-      'Avoid using non-primitive value as key, ' +
-      'use string/number value instead.',
-      context
-    )
+    if (!__WEEX__ || !('@binding' in data.key)) {
+      warn(
+        'Avoid using non-primitive value as key, ' +
+        'use string/number value instead.',
+        context
+      )
+    }
   }
   // support single function children as default scoped slot
   if (Array.isArray(children) &&
@@ -83,6 +101,7 @@ export function _createElement (
     data.scopedSlots = { default: children[0] }
     children.length = 0
   }
+  /* 根据render的类型选择规范children的方法 */
   if (normalizationType === ALWAYS_NORMALIZE) {
     children = normalizeChildren(children)
   } else if (normalizationType === SIMPLE_NORMALIZE) {
@@ -94,17 +113,30 @@ export function _createElement (
     ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag)
     if (config.isReservedTag(tag)) {
       // platform built-in elements
+      if (process.env.NODE_ENV !== 'production' && isDef(data) && isDef(data.nativeOn)) {
+        warn(
+          `The .native modifier for v-on is only valid on components but it was used on <${tag}>.`,
+          context
+        )
+      }
+      /**
+       * tag是一个string类型，创建一个普通的VNode
+       */
       vnode = new VNode(
         config.parsePlatformTagName(tag), data, children,
         undefined, undefined, context
       )
-    } else if (isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+    } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
       // component
+      /**
+       * 如果是一个已注册的组件名，创建一个组件类的VNode
+       */
       vnode = createComponent(Ctor, data, context, children, tag)
     } else {
       // unknown or unlisted namespaced elements
       // check at runtime because it may get assigned a namespace when its
       // parent normalizes children
+
       vnode = new VNode(
         tag, data, children,
         undefined, undefined, context
@@ -114,8 +146,11 @@ export function _createElement (
     // direct component options / constructor
     vnode = createComponent(tag, data, context, children)
   }
-  if (isDef(vnode)) {
-    if (ns) applyNS(vnode, ns)
+  if (Array.isArray(vnode)) {
+    return vnode
+  } else if (isDef(vnode)) {
+    if (isDef(ns)) applyNS(vnode, ns)
+    if (isDef(data)) registerDeepBindings(data)
     return vnode
   } else {
     return createEmptyVNode()
@@ -132,9 +167,22 @@ function applyNS (vnode, ns, force) {
   if (isDef(vnode.children)) {
     for (let i = 0, l = vnode.children.length; i < l; i++) {
       const child = vnode.children[i]
-      if (isDef(child.tag) && (isUndef(child.ns) || isTrue(force))) {
+      if (isDef(child.tag) && (
+        isUndef(child.ns) || (isTrue(force) && child.tag !== 'svg'))) {
         applyNS(child, ns, force)
       }
     }
+  }
+}
+
+// ref #5318
+// necessary to ensure parent re-render when deep bindings like :style and
+// :class are used on slot nodes
+function registerDeepBindings (data) {
+  if (isObject(data.style)) {
+    traverse(data.style)
+  }
+  if (isObject(data.class)) {
+    traverse(data.class)
   }
 }

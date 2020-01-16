@@ -1,18 +1,20 @@
 /* @flow */
 
-import { queueWatcher } from './scheduler'
-import Dep, { pushTarget, popTarget } from './dep'
-
 import {
   warn,
   remove,
   isObject,
   parsePath,
   _Set as Set,
-  handleError
+  handleError,
+  noop
 } from '../util/index'
 
-import type { ISet } from '../util/index'
+import { traverse } from './traverse'
+import { queueWatcher } from './scheduler'
+import Dep, { pushTarget, popTarget } from './dep'
+
+import type { SimpleSet } from '../util/index'
 
 let uid = 0
 
@@ -34,8 +36,9 @@ export default class Watcher {
   active: boolean;
   deps: Array<Dep>;
   newDeps: Array<Dep>;
-  depIds: ISet;
-  newDepIds: ISet;
+  depIds: SimpleSet;
+  newDepIds: SimpleSet;
+  before: ?Function;
   getter: Function;
   value: any;
 
@@ -43,16 +46,21 @@ export default class Watcher {
     vm: Component,
     expOrFn: string | Function,
     cb: Function,
-    options?: Object
+    options?: ?Object,
+    isRenderWatcher?: boolean
   ) {
     this.vm = vm
+    if (isRenderWatcher) {
+      vm._watcher = this
+    }
     vm._watchers.push(this)
     // options
     if (options) {
-      this.deep = !!options.deep
-      this.user = !!options.user
+      this.deep = !!options.deep // 深度监听
+      this.user = !!options.user // 在对 watcher 求值以及在执行回调函数的时候，会处理一下错误
       this.lazy = !!options.lazy
-      this.sync = !!options.sync
+      this.sync = !!options.sync // 在当前 Tick 中同步执行 watcher 的回调函数，否则响应式数据发生变化之后，watcher回调会在nextTick后执行；
+      this.before = options.before
     } else {
       this.deep = this.user = this.lazy = this.sync = false
     }
@@ -60,10 +68,15 @@ export default class Watcher {
     this.id = ++uid // uid for batching
     this.active = true
     this.dirty = this.lazy // for lazy watchers
-    this.deps = []
-    this.newDeps = []
+    /**
+     * Watcher实例持有Dep的实例的数组
+     */
+    this.deps = [] // 老的Dep集合
+    this.newDeps = [] // 触发更新生成的新的Dep集合
     this.depIds = new Set()
     this.newDepIds = new Set()
+
+
     this.expression = process.env.NODE_ENV !== 'production'
       ? expOrFn.toString()
       : ''
@@ -73,7 +86,7 @@ export default class Watcher {
     } else {
       this.getter = parsePath(expOrFn)
       if (!this.getter) {
-        this.getter = function () {}
+        this.getter = noop
         process.env.NODE_ENV !== 'production' && warn(
           `Failed watching path: "${expOrFn}" ` +
           'Watcher only accepts simple dot-delimited paths. ' +
@@ -91,10 +104,14 @@ export default class Watcher {
    * Evaluate the getter, and re-collect dependencies.
    */
   get () {
+    /* 收集Watcher实例，也就是Dep.target */
     pushTarget(this)
     let value
     const vm = this.vm
     try {
+      /* this.getter对应就是我们上篇讲到的vm._update(vm._render(), hydrating),_update会生成VNode,在这个过程中会访
+      问vm上的data，这时候就触发了数据对象的getter，defineReactive中可以发现每个getter都持有一个dep,
+      因此在触发getter的时候会触发Dep的depend方法，也就触发了Watcher的addDep方法 */
       value = this.getter.call(vm, vm)
     } catch (e) {
       if (this.user) {
@@ -108,6 +125,9 @@ export default class Watcher {
       if (this.deep) {
         traverse(value)
       }
+      /**
+       * 把 Dep.target 恢复成上一个状态，因为当前 vm 的数据依赖收集已经完成，那么对应的渲染Dep.target 也需要改变
+       */
       popTarget()
       this.cleanupDeps()
     }
@@ -119,10 +139,14 @@ export default class Watcher {
    */
   addDep (dep: Dep) {
     const id = dep.id
+    /**
+     * 保证同一数据不会被添加多次
+     */
     if (!this.newDepIds.has(id)) {
       this.newDepIds.add(id)
       this.newDeps.push(dep)
       if (!this.depIds.has(id)) {
+        /* 把当前的 watcher 订阅到这个数据持有的 dep 的 subs, 目的是为后续数据变化时候能通知到哪些 subs 做准备 */
         dep.addSub(this)
       }
     }
@@ -170,6 +194,7 @@ export default class Watcher {
    */
   run () {
     if (this.active) {
+      // 新value值
       const value = this.get()
       if (
         value !== this.value ||
@@ -179,11 +204,15 @@ export default class Watcher {
         isObject(value) ||
         this.deep
       ) {
-        // set new value
+
+        // 老value值
         const oldValue = this.value
+
+        // set new value
         this.value = value
         if (this.user) {
           try {
+            /* 触发更新 */
             this.cb.call(this.vm, value, oldValue)
           } catch (e) {
             handleError(e, this.vm, `callback for watcher "${this.expression}"`)
@@ -231,39 +260,5 @@ export default class Watcher {
       }
       this.active = false
     }
-  }
-}
-
-/**
- * Recursively traverse an object to evoke all converted
- * getters, so that every nested property inside the object
- * is collected as a "deep" dependency.
- */
-const seenObjects = new Set()
-function traverse (val: any) {
-  seenObjects.clear()
-  _traverse(val, seenObjects)
-}
-
-function _traverse (val: any, seen: ISet) {
-  let i, keys
-  const isA = Array.isArray(val)
-  if ((!isA && !isObject(val)) || !Object.isExtensible(val)) {
-    return
-  }
-  if (val.__ob__) {
-    const depId = val.__ob__.dep.id
-    if (seen.has(depId)) {
-      return
-    }
-    seen.add(depId)
-  }
-  if (isA) {
-    i = val.length
-    while (i--) _traverse(val[i], seen)
-  } else {
-    keys = Object.keys(val)
-    i = keys.length
-    while (i--) _traverse(val[keys[i]], seen)
   }
 }

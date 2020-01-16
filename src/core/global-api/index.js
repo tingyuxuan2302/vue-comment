@@ -8,6 +8,7 @@ import { initAssetRegisters } from './assets'
 import { set, del } from '../observer/index'
 import { ASSET_TYPES } from 'shared/constants'
 import builtInComponents from '../components/index'
+import { observe } from 'core/observer/index'
 
 import {
   warn,
@@ -16,7 +17,11 @@ import {
   mergeOptions,
   defineReactive
 } from '../util/index'
-
+/**
+ * 在Vue本身扩展全局方法
+ *
+ * @param     {Object}    Vue     [Vue对象本身]
+ */
 export function initGlobalAPI (Vue: GlobalAPI) {
   // config
   const configDef = {}
@@ -43,6 +48,12 @@ export function initGlobalAPI (Vue: GlobalAPI) {
   Vue.set = set
   Vue.delete = del
   Vue.nextTick = nextTick
+
+  // 2.6 explicit observable API
+  Vue.observable = <T>(obj: T): T => {
+    observe(obj)
+    return obj
+  }
 
   Vue.options = Object.create(null)
   ASSET_TYPES.forEach(type => {

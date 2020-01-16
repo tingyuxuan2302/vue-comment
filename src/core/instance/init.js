@@ -14,6 +14,7 @@ let uid = 0
 
 export function initMixin (Vue: Class<Component>) {
   Vue.prototype._init = function (options?: Object) {
+    /* 把Vue赋值给vm */
     const vm: Component = this
     // a uid
     vm._uid = uid++
@@ -27,6 +28,7 @@ export function initMixin (Vue: Class<Component>) {
     }
 
     // a flag to avoid this being observed
+    /* 一个防止vm实例自身被观察的标志位 */
     vm._isVue = true
     // merge options
     if (options && options._isComponent) {
@@ -35,6 +37,7 @@ export function initMixin (Vue: Class<Component>) {
       // internal component options needs special treatment.
       initInternalComponent(vm, options)
     } else {
+      /* 可以看出$options是通过mergeOptions这个方法去合并合并我们传入的options得到的 */
       vm.$options = mergeOptions(
         resolveConstructorOptions(vm.constructor),
         options || {},
@@ -49,39 +52,49 @@ export function initMixin (Vue: Class<Component>) {
     }
     // expose real self
     vm._self = vm
+    /* 初始化生命周期 */
     initLifecycle(vm)
+    /* 初始化事件对象 */
     initEvents(vm)
+    /* 初始化render */
     initRender(vm)
+    /* 触发beforeCreate钩子 */
     callHook(vm, 'beforeCreate')
     initInjections(vm) // resolve injections before data/props
+    /* initState 初始化props, data, methods, watch, computed等属性 */
     initState(vm)
     initProvide(vm) // resolve provide after data/props
+    /* 初始化created钩子 */
     callHook(vm, 'created')
 
     /* istanbul ignore if */
     if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+      /*格式化组件名*/
       vm._name = formatComponentName(vm, false)
       mark(endTag)
       measure(`vue ${vm._name} init`, startTag, endTag)
     }
 
     if (vm.$options.el) {
+      /* 挂载组件 */
       vm.$mount(vm.$options.el)
     }
   }
 }
 
-function initInternalComponent (vm: Component, options: InternalComponentOptions) {
+export function initInternalComponent (vm: Component, options: InternalComponentOptions) {
   const opts = vm.$options = Object.create(vm.constructor.options)
   // doing this because it's faster than dynamic enumeration.
+  const parentVnode = options._parentVnode
   opts.parent = options.parent
-  opts.propsData = options.propsData
-  opts._parentVnode = options._parentVnode
-  opts._parentListeners = options._parentListeners
-  opts._renderChildren = options._renderChildren
-  opts._componentTag = options._componentTag
-  opts._parentElm = options._parentElm
-  opts._refElm = options._refElm
+  opts._parentVnode = parentVnode
+
+  const vnodeComponentOptions = parentVnode.componentOptions
+  opts.propsData = vnodeComponentOptions.propsData
+  opts._parentListeners = vnodeComponentOptions.listeners
+  opts._renderChildren = vnodeComponentOptions.children
+  opts._componentTag = vnodeComponentOptions.tag
+
   if (options.render) {
     opts.render = options.render
     opts.staticRenderFns = options.staticRenderFns
@@ -115,32 +128,12 @@ export function resolveConstructorOptions (Ctor: Class<Component>) {
 function resolveModifiedOptions (Ctor: Class<Component>): ?Object {
   let modified
   const latest = Ctor.options
-  const extended = Ctor.extendOptions
   const sealed = Ctor.sealedOptions
   for (const key in latest) {
     if (latest[key] !== sealed[key]) {
       if (!modified) modified = {}
-      modified[key] = dedupe(latest[key], extended[key], sealed[key])
+      modified[key] = latest[key]
     }
   }
   return modified
-}
-
-function dedupe (latest, extended, sealed) {
-  // compare latest and sealed to ensure lifecycle hooks won't be duplicated
-  // between merges
-  if (Array.isArray(latest)) {
-    const res = []
-    sealed = Array.isArray(sealed) ? sealed : [sealed]
-    extended = Array.isArray(extended) ? extended : [extended]
-    for (let i = 0; i < latest.length; i++) {
-      // push original options and not sealed options to exclude duplicated options
-      if (extended.indexOf(latest[i]) >= 0 || sealed.indexOf(latest[i]) < 0) {
-        res.push(latest[i])
-      }
-    }
-    return res
-  } else {
-    return latest
-  }
 }

@@ -30,11 +30,13 @@ export function optimize (root: ?ASTElement, options: CompilerOptions) {
 
 function genStaticKeys (keys: string): Function {
   return makeMap(
-    'type,tag,attrsList,attrsMap,plain,parent,children,attrs' +
+    'type,tag,attrsList,attrsMap,plain,parent,children,attrs,start,end,rawAttrsMap' +
     (keys ? ',' + keys : '')
   )
 }
-
+/**
+ * 标记静态节点
+ */
 function markStatic (node: ASTNode) {
   node.static = isStatic(node)
   if (node.type === 1) {

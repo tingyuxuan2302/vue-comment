@@ -5,30 +5,26 @@
 /*!
  * HTML Parser By John Resig (ejohn.org)
  * Modified by Juriy "kangax" Zaytsev
- * Original code by Erik Arvidsson, Mozilla Public License
+ * Original code by Erik Arvidsson (MPL-1.1 OR Apache-2.0 OR GPL-2.0-or-later)
  * http://erik.eae.net/simplehtmlparser/simplehtmlparser.js
  */
 
 import { makeMap, no } from 'shared/util'
 import { isNonPhrasingTag } from 'web/compiler/util'
+import { unicodeRegExp } from 'core/util/lang'
 
 // Regular Expressions for parsing tags and attributes
 const attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/
-// could use https://www.w3.org/TR/1999/REC-xml-names-19990114/#NT-QName
-// but for Vue templates we can enforce a simple charset
-const ncname = '[a-zA-Z_][\\w\\-\\.]*'
+const dynamicArgAttribute = /^\s*((?:v-[\w-]+:|@|:|#)\[[^=]+\][^\s"'<>\/=]*)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/
+const ncname = `[a-zA-Z_][\\-\\.0-9_a-zA-Z${unicodeRegExp.source}]*`
 const qnameCapture = `((?:${ncname}\\:)?${ncname})`
 const startTagOpen = new RegExp(`^<${qnameCapture}`)
 const startTagClose = /^\s*(\/?)>/
 const endTag = new RegExp(`^<\\/${qnameCapture}[^>]*>`)
 const doctype = /^<!DOCTYPE [^>]+>/i
-const comment = /^<!--/
+// #7298: escape - to avoid being passed as HTML comment when inlined in page
+const comment = /^<!\--/
 const conditionalComment = /^<!\[/
-
-let IS_REGEX_CAPTURING_BROKEN = false
-'x'.replace(/x(.)?/g, function (m, g) {
-  IS_REGEX_CAPTURING_BROKEN = g === ''
-})
 
 // Special Elements (can contain anything)
 export const isPlainTextElement = makeMap('script,style,textarea', true)
@@ -39,10 +35,12 @@ const decodingMap = {
   '&gt;': '>',
   '&quot;': '"',
   '&amp;': '&',
-  '&#10;': '\n'
+  '&#10;': '\n',
+  '&#9;': '\t',
+  '&#39;': "'"
 }
-const encodedAttr = /&(?:lt|gt|quot|amp);/g
-const encodedAttrWithNewLines = /&(?:lt|gt|quot|amp|#10);/g
+const encodedAttr = /&(?:lt|gt|quot|amp|#39);/g
+const encodedAttrWithNewLines = /&(?:lt|gt|quot|amp|#39|#10|#9);/g
 
 // #5992
 const isIgnoreNewlineTag = makeMap('pre,textarea', true)
@@ -66,13 +64,16 @@ export function parseHTML (html, options) {
     if (!lastTag || !isPlainTextElement(lastTag)) {
       let textEnd = html.indexOf('<')
       if (textEnd === 0) {
+        /**
+         * 解析注释
+         */
         // Comment:
         if (comment.test(html)) {
           const commentEnd = html.indexOf('-->')
 
           if (commentEnd >= 0) {
             if (options.shouldKeepComment) {
-              options.comment(html.substring(4, commentEnd))
+              options.comment(html.substring(4, commentEnd), index, index + commentEnd + 3)
             }
             advance(commentEnd + 3)
             continue
@@ -80,6 +81,9 @@ export function parseHTML (html, options) {
         }
 
         // http://en.wikipedia.org/wiki/Conditional_comment#Downlevel-revealed_conditional_comment
+        /**
+         * 解析条件注释
+         */
         if (conditionalComment.test(html)) {
           const conditionalEnd = html.indexOf(']>')
 
@@ -90,6 +94,9 @@ export function parseHTML (html, options) {
         }
 
         // Doctype:
+        /**
+         * 解析文档类型
+         */
         const doctypeMatch = html.match(doctype)
         if (doctypeMatch) {
           advance(doctypeMatch[0].length)
@@ -109,13 +116,15 @@ export function parseHTML (html, options) {
         const startTagMatch = parseStartTag()
         if (startTagMatch) {
           handleStartTag(startTagMatch)
-          if (shouldIgnoreFirstNewline(lastTag, html)) {
+          if (shouldIgnoreFirstNewline(startTagMatch.tagName, html)) {
             advance(1)
           }
           continue
         }
       }
-
+      /**
+       * 文本解析
+       */
       let text, rest, next
       if (textEnd >= 0) {
         rest = html.slice(textEnd)
@@ -132,16 +141,18 @@ export function parseHTML (html, options) {
           rest = html.slice(textEnd)
         }
         text = html.substring(0, textEnd)
-        advance(textEnd)
       }
 
       if (textEnd < 0) {
         text = html
-        html = ''
+      }
+
+      if (text) {
+        advance(text.length)
       }
 
       if (options.chars && text) {
-        options.chars(text)
+        options.chars(text, index - text.length, index)
       }
     } else {
       let endTagLength = 0
@@ -151,7 +162,7 @@ export function parseHTML (html, options) {
         endTagLength = endTag.length
         if (!isPlainTextElement(stackedTag) && stackedTag !== 'noscript') {
           text = text
-            .replace(/<!--([\s\S]*?)-->/g, '$1')
+            .replace(/<!\--([\s\S]*?)-->/g, '$1') // #7298
             .replace(/<!\[CDATA\[([\s\S]*?)]]>/g, '$1')
         }
         if (shouldIgnoreFirstNewline(stackedTag, text)) {
@@ -170,7 +181,7 @@ export function parseHTML (html, options) {
     if (html === last) {
       options.chars && options.chars(html)
       if (process.env.NODE_ENV !== 'production' && !stack.length && options.warn) {
-        options.warn(`Mal-formatted tag at end of template: "${html}"`)
+        options.warn(`Mal-formatted tag at end of template: "${html}"`, { start: index + html.length })
       }
       break
     }
@@ -183,7 +194,9 @@ export function parseHTML (html, options) {
     index += n
     html = html.substring(n)
   }
-
+/**
+ * 解析开始标签
+ */
   function parseStartTag () {
     const start = html.match(startTagOpen)
     if (start) {
@@ -194,8 +207,13 @@ export function parseHTML (html, options) {
       }
       advance(start[0].length)
       let end, attr
-      while (!(end = html.match(startTagClose)) && (attr = html.match(attribute))) {
+      /**
+       * 匹配标签属性,并放入attrs
+       */
+      while (!(end = html.match(startTagClose)) && (attr = html.match(dynamicArgAttribute) || html.match(attribute))) {
+        attr.start = index
         advance(attr[0].length)
+        attr.end = index
         match.attrs.push(attr)
       }
       if (end) {
@@ -206,7 +224,9 @@ export function parseHTML (html, options) {
       }
     }
   }
-
+  /**
+   * 处理开始标签的match
+   */
   function handleStartTag (match) {
     const tagName = match.tagName
     const unarySlash = match.unarySlash
@@ -219,31 +239,33 @@ export function parseHTML (html, options) {
         parseEndTag(tagName)
       }
     }
-
+    /**
+     * 判断是否是一元标签，如<img /><br />
+     */
     const unary = isUnaryTag(tagName) || !!unarySlash
 
     const l = match.attrs.length
     const attrs = new Array(l)
     for (let i = 0; i < l; i++) {
       const args = match.attrs[i]
-      // hackish work around FF bug https://bugzilla.mozilla.org/show_bug.cgi?id=369778
-      if (IS_REGEX_CAPTURING_BROKEN && args[0].indexOf('""') === -1) {
-        if (args[3] === '') { delete args[3] }
-        if (args[4] === '') { delete args[4] }
-        if (args[5] === '') { delete args[5] }
-      }
       const value = args[3] || args[4] || args[5] || ''
+      const shouldDecodeNewlines = tagName === 'a' && args[1] === 'href'
+        ? options.shouldDecodeNewlinesForHref
+        : options.shouldDecodeNewlines
       attrs[i] = {
         name: args[1],
-        value: decodeAttr(
-          value,
-          options.shouldDecodeNewlines
-        )
+        value: decodeAttr(value, shouldDecodeNewlines)
+      }
+      if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+        attrs[i].start = args.start + args[0].match(/^\s*/).length
+        attrs[i].end = args.end
       }
     }
-
+    /**
+     * 非一元标签
+     */
     if (!unary) {
-      stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs })
+      stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs, start: match.start, end: match.end })
       lastTag = tagName
     }
 
@@ -251,18 +273,17 @@ export function parseHTML (html, options) {
       options.start(tagName, attrs, unary, match.start, match.end)
     }
   }
-
+  /**
+   * 解析闭合标签
+   */
   function parseEndTag (tagName, start, end) {
     let pos, lowerCasedTagName
     if (start == null) start = index
     if (end == null) end = index
 
-    if (tagName) {
-      lowerCasedTagName = tagName.toLowerCase()
-    }
-
     // Find the closest opened tag of the same type
     if (tagName) {
+      lowerCasedTagName = tagName.toLowerCase()
       for (pos = stack.length - 1; pos >= 0; pos--) {
         if (stack[pos].lowerCasedTag === lowerCasedTagName) {
           break
@@ -281,7 +302,8 @@ export function parseHTML (html, options) {
           options.warn
         ) {
           options.warn(
-            `tag <${stack[i].tag}> has no matching end tag.`
+            `tag <${stack[i].tag}> has no matching end tag.`,
+            { start: stack[i].start, end: stack[i].end }
           )
         }
         if (options.end) {

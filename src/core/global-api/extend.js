@@ -1,8 +1,8 @@
 /* @flow */
 
 import { ASSET_TYPES } from 'shared/constants'
-import { warn, extend, mergeOptions } from '../util/index'
 import { defineComputed, proxy } from '../instance/state'
+import { extend, mergeOptions, validateComponentName } from '../util/index'
 
 export function initExtend (Vue: GlobalAPI) {
   /**
@@ -12,7 +12,10 @@ export function initExtend (Vue: GlobalAPI) {
    */
   Vue.cid = 0
   let cid = 1
-
+  /**
+   * 构造一个Vue子类
+   *
+   */
   /**
    * Class inheritance
    */
@@ -26,14 +29,8 @@ export function initExtend (Vue: GlobalAPI) {
     }
 
     const name = extendOptions.name || Super.options.name
-    if (process.env.NODE_ENV !== 'production') {
-      if (!/^[a-zA-Z][\w-]*$/.test(name)) {
-        warn(
-          'Invalid component name: "' + name + '". Component names ' +
-          'can only contain alphanumeric characters and the hyphen, ' +
-          'and must start with a letter.'
-        )
-      }
+    if (process.env.NODE_ENV !== 'production' && name) {
+      validateComponentName(name)
     }
 
     const Sub = function VueComponent (options) {
@@ -77,9 +74,12 @@ export function initExtend (Vue: GlobalAPI) {
     // later at instantiation we can check if Super's options have
     // been updated.
     Sub.superOptions = Super.options
-    Sub.extendOptions = extendOptions
+    Sub.extendOptions = extendOptions // 组件对象
     Sub.sealedOptions = extend({}, Sub.options)
-
+    /**
+     * 对Sub做缓存，避免多次执行Vue.extend的时候对同一个子组件重复构造
+     *
+     */
     // cache constructor
     cachedCtors[SuperId] = Sub
     return Sub

@@ -5,7 +5,13 @@ import { detectErrors } from './error-detector'
 import { createCompileToFunctionFn } from './to-function'
 
 export function createCompilerCreator (baseCompile: Function): Function {
+  /*
+  * 主要做了两件事：
+  * 1. 合并options，将平台自有的option与传入的option进行合并
+  * 2. baseCompile,进行模版的基础编译
+  */
   return function createCompiler (baseOptions: CompilerOptions) {
+    /*编译，将模板template编译成AST、render函数以及staticRenderFns函数*/
     function compile (
       template: string,
       options?: CompilerOptions
@@ -13,12 +19,31 @@ export function createCompilerCreator (baseCompile: Function): Function {
       const finalOptions = Object.create(baseOptions)
       const errors = []
       const tips = []
-      finalOptions.warn = (msg, tip) => {
+
+      let warn = (msg, range, tip) => {
         (tip ? tips : errors).push(msg)
       }
 
       if (options) {
+        if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+          // $flow-disable-line
+          const leadingSpaceLength = template.match(/^\s*/)[0].length
+
+          warn = (msg, range, tip) => {
+            const data: WarningMessage = { msg }
+            if (range) {
+              if (range.start != null) {
+                data.start = range.start + leadingSpaceLength
+              }
+              if (range.end != null) {
+                data.end = range.end + leadingSpaceLength
+              }
+            }
+            (tip ? tips : errors).push(data)
+          }
+        }
         // merge custom modules
+        /*做下面这些merge的目的因为不同平台可以提供自己本身平台的一个baseOptions，内部封装了平台自己的实现，然后把共同的部分抽离开来放在这层compiler中，所以在这里需要merge一下*/
         if (options.modules) {
           finalOptions.modules =
             (baseOptions.modules || []).concat(options.modules)
@@ -26,21 +51,24 @@ export function createCompilerCreator (baseCompile: Function): Function {
         // merge custom directives
         if (options.directives) {
           finalOptions.directives = extend(
-            Object.create(baseOptions.directives),
+            Object.create(baseOptions.directives || null),
             options.directives
           )
         }
         // copy other options
         for (const key in options) {
+          /*合并其余的options，modules与directives已经在上面做了特殊处理了*/
           if (key !== 'modules' && key !== 'directives') {
             finalOptions[key] = options[key]
           }
         }
       }
 
-      const compiled = baseCompile(template, finalOptions)
+      finalOptions.warn = warn
+      /*基础模板编译，得到编译结果*/
+      const compiled = baseCompile(template.trim(), finalOptions)
       if (process.env.NODE_ENV !== 'production') {
-        errors.push.apply(errors, detectErrors(compiled.ast))
+        detectErrors(compiled.ast, warn)
       }
       compiled.errors = errors
       compiled.tips = tips

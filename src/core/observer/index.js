@@ -10,6 +10,8 @@ import {
   hasProto,
   isObject,
   isPlainObject,
+  isPrimitive,
+  isUndef,
   isValidArrayIndex,
   isServerRendering
 } from '../util/index'
@@ -17,51 +19,67 @@ import {
 const arrayKeys = Object.getOwnPropertyNames(arrayMethods)
 
 /**
- * By default, when a reactive property is set, the new value is
- * also converted to become reactive. However when passing down props,
- * we don't want to force conversion because the value may be a nested value
- * under a frozen data structure. Converting it would defeat the optimization.
+ * In some cases we may want to disable observation inside a component's
+ * update computation.
  */
-export const observerState = {
-  shouldConvert: true
+export let shouldObserve: boolean = true
+
+export function toggleObserving (value: boolean) {
+  shouldObserve = value
 }
 
 /**
- * Observer class that are attached to each observed
- * object. Once attached, the observer converts target
+ * Observer class that is attached to each observed
+ * object. Once attached, the observer converts the target
  * object's property keys into getter/setters that
- * collect dependencies and dispatches updates.
+ * collect dependencies and dispatch updates.
+ */
+/**
+ * 给对象的属性添加getter和setter，用于依赖收集和派发更新
  */
 export class Observer {
   value: any;
   dep: Dep;
-  vmCount: number; // number of vms that has this object as root $data
+  vmCount: number; // number of vms that have this object as root $data
 
   constructor (value: any) {
     this.value = value
     this.dep = new Dep()
     this.vmCount = 0
+    /* 把自身实例（Observer）添加到value的__ob__属性上 */
     def(value, '__ob__', this)
     if (Array.isArray(value)) {
-      const augment = hasProto
-        ? protoAugment
-        : copyAugment
-      augment(value, arrayMethods, arrayKeys)
+      /*
+          如果是数组，将修改后可以截获响应的数组方法替换掉该数组的原型中的原生方法，达到监听数组数据变化响应的效果。
+          这里如果当前浏览器支持__proto__属性，则直接覆盖当前数组对象原型上的原生数组方法，如果不支持该属性，则直接覆盖数组对象的原型。
+      */
+      if (hasProto) {
+        /**
+         * 直接覆盖原型的方法来修改目标对象
+         */
+        protoAugment(value, arrayMethods)
+      } else {
+        /*定义（覆盖）目标对象或数组的某一个方法*/
+        copyAugment(value, arrayMethods, arrayKeys)
+      }
+
+      /*如果是数组则需要遍历数组的每一个成员进行observe*/
       this.observeArray(value)
     } else {
+      /*如果是对象则直接walk进行绑定*/
       this.walk(value)
     }
   }
 
   /**
-   * Walk through each property and convert them into
+   * Walk through all properties and convert them into
    * getter/setters. This method should only be called when
    * value type is Object.
    */
   walk (obj: Object) {
     const keys = Object.keys(obj)
     for (let i = 0; i < keys.length; i++) {
-      defineReactive(obj, keys[i], obj[keys[i]])
+      defineReactive(obj, keys[i])
     }
   }
 
@@ -78,20 +96,28 @@ export class Observer {
 // helpers
 
 /**
- * Augment an target Object or Array by intercepting
+ * Augment a target Object or Array by intercepting
  * the prototype chain using __proto__
  */
-function protoAugment (target, src: Object, keys: any) {
+
+/**
+ * 直接覆盖原型的方法来修改目标对象或数组
+ *
+ * @param     {object}    target     []
+ * @param     {object}   src   方法集合
+ */
+function protoAugment (target, src: Object) {
   /* eslint-disable no-proto */
   target.__proto__ = src
   /* eslint-enable no-proto */
 }
 
 /**
- * Augment an target Object or Array by defining
+ * Augment a target Object or Array by defining
  * hidden properties.
  */
 /* istanbul ignore next */
+/*定义（覆盖）目标对象或数组的某一个方法*/
 function copyAugment (target: Object, src: Object, keys: Array<string>) {
   for (let i = 0, l = keys.length; i < l; i++) {
     const key = keys[i]
@@ -104,6 +130,10 @@ function copyAugment (target: Object, src: Object, keys: Array<string>) {
  * returns the new observer if successfully observed,
  * or the existing observer if the value already has one.
  */
+/**
+ * 监听数据变化
+ * @param {object} value    data||props等
+ */
 export function observe (value: any, asRootData: ?boolean): Observer | void {
   if (!isObject(value) || value instanceof VNode) {
     return
@@ -112,7 +142,7 @@ export function observe (value: any, asRootData: ?boolean): Observer | void {
   if (hasOwn(value, '__ob__') && value.__ob__ instanceof Observer) {
     ob = value.__ob__
   } else if (
-    observerState.shouldConvert &&
+    shouldObserve &&
     !isServerRendering() &&
     (Array.isArray(value) || isPlainObject(value)) &&
     Object.isExtensible(value) &&
@@ -128,6 +158,9 @@ export function observe (value: any, asRootData: ?boolean): Observer | void {
 
 /**
  * Define a reactive property on an Object.
+ */
+/**
+ * 定义一个响应式对象，给对象添加setter和getter
  */
 export function defineReactive (
   obj: Object,
@@ -146,14 +179,24 @@ export function defineReactive (
   // cater for pre-defined getter/setters
   const getter = property && property.get
   const setter = property && property.set
+  /* 取值 */
+  if ((!getter || setter) && arguments.length === 2) {
+    val = obj[key]
+  }
 
+  /**
+   * 递归调用observe，使得obj对象无论层次多么深，都会将所有属性变成响应式的
+   */
+  // 获取具有__ob__属性的数据
   let childOb = !shallow && observe(val)
   Object.defineProperty(obj, key, {
     enumerable: true,
     configurable: true,
+    /* 依赖收集 */
     get: function reactiveGetter () {
       const value = getter ? getter.call(obj) : val
       if (Dep.target) {
+        /* 依赖收集 */
         dep.depend()
         if (childOb) {
           childOb.dep.depend()
@@ -164,6 +207,7 @@ export function defineReactive (
       }
       return value
     },
+    /* 派发更新 */
     set: function reactiveSetter (newVal) {
       const value = getter ? getter.call(obj) : val
       /* eslint-disable no-self-compare */
@@ -174,6 +218,8 @@ export function defineReactive (
       if (process.env.NODE_ENV !== 'production' && customSetter) {
         customSetter()
       }
+      // #7981: for accessor properties without setter
+      if (getter && !setter) return
       if (setter) {
         setter.call(obj, newVal)
       } else {
@@ -191,12 +237,17 @@ export function defineReactive (
  * already exist.
  */
 export function set (target: Array<any> | Object, key: any, val: any): any {
+  if (process.env.NODE_ENV !== 'production' &&
+    (isUndef(target) || isPrimitive(target))
+  ) {
+    warn(`Cannot set reactive property on undefined, null, or primitive value: ${(target: any)}`)
+  }
   if (Array.isArray(target) && isValidArrayIndex(key)) {
     target.length = Math.max(target.length, key)
     target.splice(key, 1, val)
     return val
   }
-  if (hasOwn(target, key)) {
+  if (key in target && !(key in Object.prototype)) {
     target[key] = val
     return val
   }
@@ -221,6 +272,11 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
  * Delete a property and trigger change if necessary.
  */
 export function del (target: Array<any> | Object, key: any) {
+  if (process.env.NODE_ENV !== 'production' &&
+    (isUndef(target) || isPrimitive(target))
+  ) {
+    warn(`Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`)
+  }
   if (Array.isArray(target) && isValidArrayIndex(key)) {
     target.splice(key, 1)
     return
