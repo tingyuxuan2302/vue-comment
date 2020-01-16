@@ -17,24 +17,29 @@ import {
   isFalsyAttrValue,
   convertEnumeratedValue
 } from 'web/util/index'
-
+/*更新attr*/
 function updateAttrs (oldVnode: VNodeWithData, vnode: VNodeWithData) {
   const opts = vnode.componentOptions
   if (isDef(opts) && opts.Ctor.options.inheritAttrs === false) {
     return
   }
+  /*如果旧的以及新的VNode节点均没有attr属性，则直接返回*/
   if (isUndef(oldVnode.data.attrs) && isUndef(vnode.data.attrs)) {
     return
   }
   let key, cur, old
+  /*VNode节点对应的Dom实例*/
   const elm = vnode.elm
+  /*旧VNode节点的attr*/
   const oldAttrs = oldVnode.data.attrs || {}
+  /*新VNode节点的attr*/
   let attrs: any = vnode.data.attrs || {}
   // clone observed objects, as the user probably wants to mutate it
+  /*如果新的VNode的attr已经有__ob__（代表已经被Observe处理过了）， 进行深拷贝*/
   if (isDef(attrs.__ob__)) {
     attrs = vnode.data.attrs = extend({}, attrs)
   }
-
+  /*遍历attr，不一致则替换*/
   for (key in attrs) {
     cur = attrs[key]
     old = oldAttrs[key]
@@ -58,7 +63,7 @@ function updateAttrs (oldVnode: VNodeWithData, vnode: VNodeWithData) {
     }
   }
 }
-
+/*设置attr*/
 function setAttr (el: Element, key: string, value: any) {
   if (el.tagName.indexOf('-') > -1) {
     baseSetAttr(el, key, value)
@@ -112,7 +117,7 @@ function baseSetAttr (el, key, value) {
     el.setAttribute(key, value)
   }
 }
-
+/* attr只需要在create以及update钩子被调用时更新DOM的attr属性即可。 */
 export default {
   create: updateAttrs,
   update: updateAttrs

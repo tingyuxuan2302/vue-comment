@@ -7,9 +7,11 @@ import { isIE, isIOS, isNative } from './env'
 
 export let isUsingMicroTask = false
 
+/* 存放异步执行的回调 */
 const callbacks = []
+/* 标记位，如果已经有timerFunc被推送到任务队列中去则不需要重复推送 */
 let pending = false
-
+/* 循环执行异步回调 */
 function flushCallbacks () {
   pending = false
   const copies = callbacks.slice(0)
@@ -30,6 +32,8 @@ function flushCallbacks () {
 // where microtasks have too high a priority and fire in between supposedly
 // sequential events (e.g. #4521, #6690, which have workarounds)
 // or even between bubbling of the same event (#6566).
+
+/* 一个函数指针，指向函数将被推送到任务队列中，等到主线程任务执行完时，任务队列中的timeFunc将被调用 */
 let timerFunc
 
 // The nextTick behavior leverages the microtask queue, which can be accessed
@@ -50,6 +54,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
     // "force" the microtask queue to be flushed by adding an empty timer.
     if (isIOS) setTimeout(noop)
   }
+  /* 执行微任务标志位 */
   isUsingMicroTask = true
 } else if (!isIE && typeof MutationObserver !== 'undefined' && (
   isNative(MutationObserver) ||
@@ -59,6 +64,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
   // Use MutationObserver where native Promise is not available,
   // e.g. PhantomJS, iOS7, Android 4.4
   // (#6466 MutationObserver is unreliable in IE11)
+  /* 不支持Promise则使用MutationObserver */
   let counter = 1
   const observer = new MutationObserver(flushCallbacks)
   const textNode = document.createTextNode(String(counter))
@@ -74,16 +80,18 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
   // Fallback to setImmediate.
   // Technically it leverages the (macro) task queue,
   // but it is still a better choice than setTimeout.
+  /* 不支持Promise和MutationObserver则使用setImmediate */
   timerFunc = () => {
     setImmediate(flushCallbacks)
   }
 } else {
   // Fallback to setTimeout.
+  /* 否则都使用setTimeout */
   timerFunc = () => {
     setTimeout(flushCallbacks, 0)
   }
 }
-
+/* 延迟一个任务使其异步执行，在下一个tick时执行，这个函数的作用是在task或者microtask中推入一个timerFunc，在当前调用栈执行完以后以此执行直到执行到timerFunc,目的是延迟到当前调用栈执行完以后执行 */
 export function nextTick (cb?: Function, ctx?: Object) {
   let _resolve
   callbacks.push(() => {
@@ -97,11 +105,13 @@ export function nextTick (cb?: Function, ctx?: Object) {
       _resolve(ctx)
     }
   })
+  /* 已经有timerFunc被推送到任务队列中去则不需要重复推送 */
   if (!pending) {
     pending = true
     timerFunc()
   }
   // $flow-disable-line
+  /* nextTick没有传回调函数时，返回一个Promise，我们可以nextTick().then(() => {}) */
   if (!cb && typeof Promise !== 'undefined') {
     return new Promise(resolve => {
       _resolve = resolve

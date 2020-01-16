@@ -11,6 +11,9 @@ export function initUse (Vue: GlobalAPI) {
 
     // additional parameters
     const args = toArray(arguments, 1)
+    /**
+     * install方法的第一个参数是Vue
+     */
     args.unshift(this)
     if (typeof plugin.install === 'function') {
       plugin.install.apply(plugin, args)

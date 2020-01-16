@@ -64,6 +64,9 @@ export function parseHTML (html, options) {
     if (!lastTag || !isPlainTextElement(lastTag)) {
       let textEnd = html.indexOf('<')
       if (textEnd === 0) {
+        /**
+         * 解析注释
+         */
         // Comment:
         if (comment.test(html)) {
           const commentEnd = html.indexOf('-->')
@@ -78,6 +81,9 @@ export function parseHTML (html, options) {
         }
 
         // http://en.wikipedia.org/wiki/Conditional_comment#Downlevel-revealed_conditional_comment
+        /**
+         * 解析条件注释
+         */
         if (conditionalComment.test(html)) {
           const conditionalEnd = html.indexOf(']>')
 
@@ -88,6 +94,9 @@ export function parseHTML (html, options) {
         }
 
         // Doctype:
+        /**
+         * 解析文档类型
+         */
         const doctypeMatch = html.match(doctype)
         if (doctypeMatch) {
           advance(doctypeMatch[0].length)
@@ -113,7 +122,9 @@ export function parseHTML (html, options) {
           continue
         }
       }
-
+      /**
+       * 文本解析
+       */
       let text, rest, next
       if (textEnd >= 0) {
         rest = html.slice(textEnd)
@@ -183,7 +194,9 @@ export function parseHTML (html, options) {
     index += n
     html = html.substring(n)
   }
-
+/**
+ * 解析开始标签
+ */
   function parseStartTag () {
     const start = html.match(startTagOpen)
     if (start) {
@@ -194,6 +207,9 @@ export function parseHTML (html, options) {
       }
       advance(start[0].length)
       let end, attr
+      /**
+       * 匹配标签属性,并放入attrs
+       */
       while (!(end = html.match(startTagClose)) && (attr = html.match(dynamicArgAttribute) || html.match(attribute))) {
         attr.start = index
         advance(attr[0].length)
@@ -208,7 +224,9 @@ export function parseHTML (html, options) {
       }
     }
   }
-
+  /**
+   * 处理开始标签的match
+   */
   function handleStartTag (match) {
     const tagName = match.tagName
     const unarySlash = match.unarySlash
@@ -221,7 +239,9 @@ export function parseHTML (html, options) {
         parseEndTag(tagName)
       }
     }
-
+    /**
+     * 判断是否是一元标签，如<img /><br />
+     */
     const unary = isUnaryTag(tagName) || !!unarySlash
 
     const l = match.attrs.length
@@ -241,7 +261,9 @@ export function parseHTML (html, options) {
         attrs[i].end = args.end
       }
     }
-
+    /**
+     * 非一元标签
+     */
     if (!unary) {
       stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs, start: match.start, end: match.end })
       lastTag = tagName
@@ -251,7 +273,9 @@ export function parseHTML (html, options) {
       options.start(tagName, attrs, unary, match.start, match.end)
     }
   }
-
+  /**
+   * 解析闭合标签
+   */
   function parseEndTag (tagName, start, end) {
     let pos, lowerCasedTagName
     if (start == null) start = index

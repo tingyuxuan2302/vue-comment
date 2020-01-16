@@ -65,7 +65,9 @@ function prependModifierMarker (symbol: string, name: string, dynamic?: boolean)
     ? `_p(${name},"${symbol}")`
     : symbol + name // mark the event as captured
 }
-
+/**
+ * 给元素添加事件
+ */
 export function addHandler (
   el: ASTElement,
   name: string,
@@ -124,6 +126,12 @@ export function addHandler (
   }
 
   let events
+  /**
+   * 判断是否是原生事件
+   *
+   * @param     {boolean}    xx     []
+   * @returns    {undefined}      无
+   */
   if (modifiers.native) {
     delete modifiers.native
     events = el.nativeEvents || (el.nativeEvents = {})

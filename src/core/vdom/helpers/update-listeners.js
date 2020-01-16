@@ -59,6 +59,9 @@ export function updateListeners (
   vm: Component
 ) {
   let name, def, cur, old, event
+  /**
+   * 遍历on这个事件对象循环添加事件
+   */
   for (name in on) {
     def = cur = on[name]
     old = oldOn[name]
@@ -86,6 +89,9 @@ export function updateListeners (
       on[name] = old
     }
   }
+  /**
+   * 移除旧的事件对象
+   */
   for (name in oldOn) {
     if (isUndef(on[name])) {
       event = normalizeEvent(name)

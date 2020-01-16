@@ -189,9 +189,9 @@ export function genFor (
   altGen?: Function,
   altHelper?: string
 ): string {
-  const exp = el.for
-  const alias = el.alias
-  const iterator1 = el.iterator1 ? `,${el.iterator1}` : ''
+  const exp = el.for      // 相当于被循环的data
+  const alias = el.alias  // 相当于 item
+  const iterator1 = el.iterator1 ? `,${el.iterator1}` : '' // 相当于index
   const iterator2 = el.iterator2 ? `,${el.iterator2}` : ''
 
   if (process.env.NODE_ENV !== 'production' &&
@@ -215,7 +215,9 @@ export function genFor (
       `return ${(altGen || genElement)(el, state)}` +
     '})'
 }
-
+/**
+ * 根据AST元素节点的属性构造出一个data对象字符串，在后边创建VNode的时候会作为参数传人
+ */
 export function genData (el: ASTElement, state: CodegenState): string {
   let data = '{'
 
@@ -305,7 +307,9 @@ export function genData (el: ASTElement, state: CodegenState): string {
   }
   return data
 }
-
+/**
+ * 生成指令
+ */
 function genDirectives (el: ASTElement, state: CodegenState): string | void {
   const dirs = el.directives
   if (!dirs) return

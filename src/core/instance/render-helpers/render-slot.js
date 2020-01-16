@@ -6,8 +6,8 @@ import { extend, warn, isObject } from 'core/util/index'
  * Runtime helper for rendering <slot>
  */
 export function renderSlot (
-  name: string,
-  fallback: ?Array<VNode>,
+  name: string, // slot名称
+  fallback: ?Array<VNode>, // 代表插槽的默认内容生成的vnode数组
   props: ?Object,
   bindObject: ?Object
 ): ?Array<VNode> {

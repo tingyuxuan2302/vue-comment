@@ -6,8 +6,8 @@ import type VNode from 'core/vdom/vnode'
  * Runtime helper for resolving raw children VNodes into a slot object.
  */
 export function resolveSlots (
-  children: ?Array<VNode>,
-  context: ?Component
+  children: ?Array<VNode>, // 父vnode的children
+  context: ?Component // 父组件的 vm 实例
 ): { [key: string]: Array<VNode> } {
   if (!children || !children.length) {
     return {}
@@ -25,6 +25,7 @@ export function resolveSlots (
     if ((child.context === context || child.fnContext === context) &&
       data && data.slot != null
     ) {
+      // 插槽名
       const name = data.slot
       const slot = (slots[name] || (slots[name] = []))
       if (child.tag === 'template') {

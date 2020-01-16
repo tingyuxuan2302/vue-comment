@@ -17,7 +17,11 @@ import {
   mergeOptions,
   defineReactive
 } from '../util/index'
-
+/**
+ * 在Vue本身扩展全局方法
+ *
+ * @param     {Object}    Vue     [Vue对象本身]
+ */
 export function initGlobalAPI (Vue: GlobalAPI) {
   // config
   const configDef = {}

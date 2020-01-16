@@ -108,7 +108,10 @@ export function createComponent (
   if (isUndef(Ctor)) {
     return
   }
-
+  /**
+   * 构造子类构造函数
+   *
+   */
   const baseCtor = context.$options._base
 
   // plain options object: turn it into a constructor
@@ -125,6 +128,9 @@ export function createComponent (
     return
   }
 
+    /**
+     * 创建异步组件
+     */
   // async component
   let asyncFactory
   if (isUndef(Ctor.cid)) {
@@ -182,6 +188,10 @@ export function createComponent (
     }
   }
 
+  /**
+   * 安装组件钩子
+   *
+   */
   // install component management hooks onto the placeholder node
   installComponentHooks(data)
 

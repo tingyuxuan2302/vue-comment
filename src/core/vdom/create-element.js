@@ -25,6 +25,9 @@ const ALWAYS_NORMALIZE = 2
 
 // wrapper function for providing a more flexible interface
 // without getting yelled at by flow
+/**
+ * 封装的createElement，可传入一些灵活的参数，最后调用_createElement
+ */
 export function createElement (
   context: Component,
   tag: any,
@@ -44,6 +47,16 @@ export function createElement (
   return _createElement(context, tag, data, children, normalizationType)
 }
 
+/**
+ * 创建元素
+ *
+ * @param     {Component}    context     VNode上下文环境
+ * @param     {string}    tag     元素标签
+ * @param         data     VNode的数据
+ * @param         children     当前VNode的子节点
+ * @param         normalizationType     子节点规范的类型（参考 render 函数是编译生成的还是用户手写的。）
+ * @returns    vnode      创建的节点
+ */
 export function _createElement (
   context: Component,
   tag?: string | Class<Component> | Function | Object,
@@ -51,6 +64,7 @@ export function _createElement (
   children?: any,
   normalizationType?: number
 ): VNode | Array<VNode> {
+  /* 当data具有__ob__属性的时候，代表它已经被观察observed */
   if (isDef(data) && isDef((data: any).__ob__)) {
     process.env.NODE_ENV !== 'production' && warn(
       `Avoid using observed data object as vnode data: ${JSON.stringify(data)}\n` +
@@ -87,6 +101,7 @@ export function _createElement (
     data.scopedSlots = { default: children[0] }
     children.length = 0
   }
+  /* 根据render的类型选择规范children的方法 */
   if (normalizationType === ALWAYS_NORMALIZE) {
     children = normalizeChildren(children)
   } else if (normalizationType === SIMPLE_NORMALIZE) {
@@ -104,17 +119,24 @@ export function _createElement (
           context
         )
       }
+      /**
+       * tag是一个string类型，创建一个普通的VNode
+       */
       vnode = new VNode(
         config.parsePlatformTagName(tag), data, children,
         undefined, undefined, context
       )
     } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
       // component
+      /**
+       * 如果是一个已注册的组件名，创建一个组件类的VNode
+       */
       vnode = createComponent(Ctor, data, context, children, tag)
     } else {
       // unknown or unlisted namespaced elements
       // check at runtime because it may get assigned a namespace when its
       // parent normalizes children
+
       vnode = new VNode(
         tag, data, children,
         undefined, undefined, context

@@ -166,7 +166,15 @@ function genDefaultModel (
   if (needCompositionGuard) {
     code = `if($event.target.composing)return;${code}`
   }
-
+  /**
+   * v-model的精髓
+   * 修改AST树，给el添加一个prop，相当于在input上动态绑定了value
+   * 给el添加事件处理，相当于在input上绑定了input事件
+   * 转换成的模版如下：
+   * <input
+      v-bind:value="message"
+      v-on:input="message=$event.target.value">
+   */
   addProp(el, 'value', `(${value})`)
   addHandler(el, event, code, null, true)
   if (trim || number) {

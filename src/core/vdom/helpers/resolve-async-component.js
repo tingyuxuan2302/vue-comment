@@ -111,9 +111,15 @@ export function resolveAsyncComponent (
       }
     })
 
+    /**
+     * 执行组件的工厂函数，得到组件定义的对象，执行resolve(res)
+     */
     const res = factory(resolve, reject)
 
     if (isObject(res)) {
+      /**
+       * 是否是Promise异步加载的组件
+       */
       if (isPromise(res)) {
         // () => Promise
         if (isUndef(factory.resolved)) {
@@ -121,10 +127,15 @@ export function resolveAsyncComponent (
         }
       } else if (isPromise(res.component)) {
         res.component.then(resolve, reject)
-
+        /**
+         * 高级异步组件是否定义了error组件
+         */
         if (isDef(res.error)) {
           factory.errorComp = ensureCtor(res.error, baseCtor)
         }
+        /**
+         * 高级异步组件是否定义了loading组件
+         */
 
         if (isDef(res.loading)) {
           factory.loadingComp = ensureCtor(res.loading, baseCtor)

@@ -20,11 +20,15 @@ export function initEvents (vm: Component) {
 }
 
 let target: any
-
+/**
+ * 添加自定义事件
+ */
 function add (event, fn) {
   target.$on(event, fn)
 }
-
+/**
+ * 删除自定义事件
+ */
 function remove (event, fn) {
   target.$off(event, fn)
 }
@@ -48,7 +52,9 @@ export function updateComponentListeners (
   updateListeners(listeners, oldListeners || {}, add, remove, createOnceHandler, vm)
   target = undefined
 }
-
+/**
+ * Vue的事件中心
+ */
 export function eventsMixin (Vue: Class<Component>) {
   const hookRE = /^hook:/
   Vue.prototype.$on = function (event: string | Array<string>, fn: Function): Component {
@@ -129,6 +135,12 @@ export function eventsMixin (Vue: Class<Component>) {
         )
       }
     }
+    /**
+     * 触发$emit，触发的回调函数是定义在父组件上的
+     *
+     * @param     {boolean}    xx     []
+     * @returns    {undefined}      无
+     */
     let cbs = vm._events[event]
     if (cbs) {
       cbs = cbs.length > 1 ? toArray(cbs) : cbs

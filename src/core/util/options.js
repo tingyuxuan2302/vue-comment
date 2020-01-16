@@ -139,7 +139,12 @@ strats.data = function (
 
   return mergeDataOrFn(parentVal, childVal, vm)
 }
-
+/**
+ * 钩子函数和props到合并策略
+ *
+ * @param     {boolean}    xx     []
+ * @returns    {undefined}      无
+ */
 /**
  * Hooks and props are merged as arrays.
  */
@@ -402,6 +407,12 @@ export function mergeOptions (
   normalizeInject(child, vm)
   normalizeDirectives(child)
 
+  /**
+   * 递归循环把extends和mixins合并到parent自身属性上
+   *
+   * @param     {boolean}    xx     []
+   * @returns    {undefined}      无
+   */
   // Apply extends and mixins on the child options,
   // but only if it is a raw options object that isn't
   // the result of another mergeOptions call.
@@ -439,6 +450,9 @@ export function mergeOptions (
  * This function is used because child instances need access
  * to assets defined in its ancestor chain.
  */
+/**
+ * 全局注册组件的时候会调用
+ */
 export function resolveAsset (
   options: Object,
   type: string,
@@ -452,8 +466,14 @@ export function resolveAsset (
   const assets = options[type]
   // check local registration variations first
   if (hasOwn(assets, id)) return assets[id]
+  /**
+   * 把id（组件名称）变成驼峰
+   */
   const camelizedId = camelize(id)
   if (hasOwn(assets, camelizedId)) return assets[camelizedId]
+  /**
+   * 把id（组件名称）变成首字母大写的驼峰写法
+   */
   const PascalCaseId = capitalize(camelizedId)
   if (hasOwn(assets, PascalCaseId)) return assets[PascalCaseId]
   // fallback to prototype chain

@@ -12,7 +12,10 @@ export function initExtend (Vue: GlobalAPI) {
    */
   Vue.cid = 0
   let cid = 1
-
+  /**
+   * 构造一个Vue子类
+   *
+   */
   /**
    * Class inheritance
    */
@@ -71,9 +74,12 @@ export function initExtend (Vue: GlobalAPI) {
     // later at instantiation we can check if Super's options have
     // been updated.
     Sub.superOptions = Super.options
-    Sub.extendOptions = extendOptions
+    Sub.extendOptions = extendOptions // 组件对象
     Sub.sealedOptions = extend({}, Sub.options)
-
+    /**
+     * 对Sub做缓存，避免多次执行Vue.extend的时候对同一个子组件重复构造
+     *
+     */
     // cache constructor
     cachedCtors[SuperId] = Sub
     return Sub

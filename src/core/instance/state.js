@@ -36,26 +36,37 @@ const sharedPropertyDefinition = {
 }
 
 export function proxy (target: Object, sourceKey: string, key: string) {
+  /* proxy(vm, `_data`, key)，可以看出get直接输出vm._data.key的值 */
   sharedPropertyDefinition.get = function proxyGetter () {
     return this[sourceKey][key]
   }
+  /* 把val（新值）附给vm._data.key */
   sharedPropertyDefinition.set = function proxySetter (val) {
     this[sourceKey][key] = val
   }
+  /* 最后用sharedPropertyDefinition去描述vm的key属性 */
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
-
+/**
+ * 初始化状态
+ */
 export function initState (vm: Component) {
   vm._watchers = []
   const opts = vm.$options
+  /*初始化props*/
   if (opts.props) initProps(vm, opts.props)
+  /*初始化方法*/
   if (opts.methods) initMethods(vm, opts.methods)
+  /*初始化data*/
   if (opts.data) {
     initData(vm)
   } else {
+    /*该组件没有data的时候绑定一个空对象*/
     observe(vm._data = {}, true /* asRootData */)
   }
+  /*初始化computed*/
   if (opts.computed) initComputed(vm, opts.computed)
+  /*初始化watchers*/
   if (opts.watch && opts.watch !== nativeWatch) {
     initWatch(vm, opts.watch)
   }
@@ -103,6 +114,9 @@ function initProps (vm: Component, propsOptions: Object) {
     // during Vue.extend(). We only need to proxy props defined at
     // instantiation here.
     if (!(key in vm)) {
+      /**
+       * 把vm._props.key全都代理到vm.key上
+       */
       proxy(vm, `_props`, key)
     }
   }
@@ -127,6 +141,7 @@ function initData (vm: Component) {
   const props = vm.$options.props
   const methods = vm.$options.methods
   let i = keys.length
+  //遍历data中的数据
   while (i--) {
     const key = keys[i]
     if (process.env.NODE_ENV !== 'production') {
@@ -137,6 +152,7 @@ function initData (vm: Component) {
         )
       }
     }
+    /*保证data中的key不与props中的key重复，props优先，如果有冲突会产生warning*/
     if (props && hasOwn(props, key)) {
       process.env.NODE_ENV !== 'production' && warn(
         `The data property "${key}" is already declared as a prop. ` +
@@ -144,10 +160,14 @@ function initData (vm: Component) {
         vm
       )
     } else if (!isReserved(key)) {
+      /**
+       * 把vm._data.key全都代理到vm.key上
+       */
       proxy(vm, `_data`, key)
     }
   }
   // observe data
+  /*从这里开始我们要observe了，开始对数据进行绑定，这里有尤大大的注释asRootData，这步作为根数据，下面会进行递归observe进行对深层对象的绑定。*/
   observe(data, true /* asRootData */)
 }
 
@@ -165,7 +185,9 @@ export function getData (data: Function, vm: Component): any {
 }
 
 const computedWatcherOptions = { lazy: true }
-
+/**
+ * 初始化computed
+ */
 function initComputed (vm: Component, computed: Object) {
   // $flow-disable-line
   const watchers = vm._computedWatchers = Object.create(null)
@@ -206,7 +228,11 @@ function initComputed (vm: Component, computed: Object) {
     }
   }
 }
-
+/**
+ * 定义计算属性
+ *
+ * @param     {Object | Function}    userDef     计算属性的值
+ */
 export function defineComputed (
   target: any,
   key: string,
@@ -287,6 +313,9 @@ function initMethods (vm: Component, methods: Object) {
   }
 }
 
+/**
+ * 初始化侦听
+ */
 function initWatch (vm: Component, watch: Object) {
   for (const key in watch) {
     const handler = watch[key]

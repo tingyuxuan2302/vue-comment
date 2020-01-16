@@ -36,8 +36,9 @@ Vue.prototype.__patch__ = inBrowser ? patch : noop
 // public mount method
 Vue.prototype.$mount = function (
   el?: string | Element,
-  hydrating?: boolean
+  hydrating?: boolean // 服务端渲染相关的参数
 ): Component {
+  // 在浏览器环境下转换成DOM对象
   el = el && inBrowser ? query(el) : undefined
   return mountComponent(this, el, hydrating)
 }

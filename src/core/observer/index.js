@@ -34,6 +34,9 @@ export function toggleObserving (value: boolean) {
  * object's property keys into getter/setters that
  * collect dependencies and dispatch updates.
  */
+/**
+ * 给对象的属性添加getter和setter，用于依赖收集和派发更新
+ */
 export class Observer {
   value: any;
   dep: Dep;
@@ -43,15 +46,27 @@ export class Observer {
     this.value = value
     this.dep = new Dep()
     this.vmCount = 0
+    /* 把自身实例（Observer）添加到value的__ob__属性上 */
     def(value, '__ob__', this)
     if (Array.isArray(value)) {
+      /*
+          如果是数组，将修改后可以截获响应的数组方法替换掉该数组的原型中的原生方法，达到监听数组数据变化响应的效果。
+          这里如果当前浏览器支持__proto__属性，则直接覆盖当前数组对象原型上的原生数组方法，如果不支持该属性，则直接覆盖数组对象的原型。
+      */
       if (hasProto) {
+        /**
+         * 直接覆盖原型的方法来修改目标对象
+         */
         protoAugment(value, arrayMethods)
       } else {
+        /*定义（覆盖）目标对象或数组的某一个方法*/
         copyAugment(value, arrayMethods, arrayKeys)
       }
+
+      /*如果是数组则需要遍历数组的每一个成员进行observe*/
       this.observeArray(value)
     } else {
+      /*如果是对象则直接walk进行绑定*/
       this.walk(value)
     }
   }
@@ -84,6 +99,13 @@ export class Observer {
  * Augment a target Object or Array by intercepting
  * the prototype chain using __proto__
  */
+
+/**
+ * 直接覆盖原型的方法来修改目标对象或数组
+ *
+ * @param     {object}    target     []
+ * @param     {object}   src   方法集合
+ */
 function protoAugment (target, src: Object) {
   /* eslint-disable no-proto */
   target.__proto__ = src
@@ -95,6 +117,7 @@ function protoAugment (target, src: Object) {
  * hidden properties.
  */
 /* istanbul ignore next */
+/*定义（覆盖）目标对象或数组的某一个方法*/
 function copyAugment (target: Object, src: Object, keys: Array<string>) {
   for (let i = 0, l = keys.length; i < l; i++) {
     const key = keys[i]
@@ -106,6 +129,10 @@ function copyAugment (target: Object, src: Object, keys: Array<string>) {
  * Attempt to create an observer instance for a value,
  * returns the new observer if successfully observed,
  * or the existing observer if the value already has one.
+ */
+/**
+ * 监听数据变化
+ * @param {object} value    data||props等
  */
 export function observe (value: any, asRootData: ?boolean): Observer | void {
   if (!isObject(value) || value instanceof VNode) {
@@ -132,6 +159,9 @@ export function observe (value: any, asRootData: ?boolean): Observer | void {
 /**
  * Define a reactive property on an Object.
  */
+/**
+ * 定义一个响应式对象，给对象添加setter和getter
+ */
 export function defineReactive (
   obj: Object,
   key: string,
@@ -149,17 +179,24 @@ export function defineReactive (
   // cater for pre-defined getter/setters
   const getter = property && property.get
   const setter = property && property.set
+  /* 取值 */
   if ((!getter || setter) && arguments.length === 2) {
     val = obj[key]
   }
 
+  /**
+   * 递归调用observe，使得obj对象无论层次多么深，都会将所有属性变成响应式的
+   */
+  // 获取具有__ob__属性的数据
   let childOb = !shallow && observe(val)
   Object.defineProperty(obj, key, {
     enumerable: true,
     configurable: true,
+    /* 依赖收集 */
     get: function reactiveGetter () {
       const value = getter ? getter.call(obj) : val
       if (Dep.target) {
+        /* 依赖收集 */
         dep.depend()
         if (childOb) {
           childOb.dep.depend()
@@ -170,6 +207,7 @@ export function defineReactive (
       }
       return value
     },
+    /* 派发更新 */
     set: function reactiveSetter (newVal) {
       const value = getter ? getter.call(obj) : val
       /* eslint-disable no-self-compare */

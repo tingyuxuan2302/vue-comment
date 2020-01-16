@@ -43,7 +43,9 @@ function createOnceHandler (event, handler, capture) {
 // implementation and does not fire microtasks in between event propagation, so
 // safe to exclude.
 const useMicrotaskFix = isUsingMicroTask && !(isFF && Number(isFF[1]) <= 53)
-
+/**
+ * 添加事件
+ */
 function add (
   name: string,
   handler: Function,
@@ -88,7 +90,9 @@ function add (
       : capture
   )
 }
-
+/**
+ * 移除事件
+ */
 function remove (
   name: string,
   handler: Function,
@@ -106,10 +110,16 @@ function updateDOMListeners (oldVnode: VNodeWithData, vnode: VNodeWithData) {
   if (isUndef(oldVnode.data.on) && isUndef(vnode.data.on)) {
     return
   }
+  // data中对应的事件对象
   const on = vnode.data.on || {}
   const oldOn = oldVnode.data.on || {}
+  /**
+   * target是当前vnode对应的DOM对象
+   */
   target = vnode.elm
+  // 对v-model的处理
   normalizeEvents(on)
+
   updateListeners(on, oldOn, add, remove, createOnceHandler, vnode.context)
   target = undefined
 }

@@ -57,19 +57,22 @@ let platformMustUseProp
 let platformGetTagNamespace
 let maybeComponent
 
+/**
+ * AST 元素节点总共有 3 种类型，type 为 1 表示是普通元素，为 2 表示是表达式，为 3 表示是纯文本
+ */
 export function createASTElement (
   tag: string,
   attrs: Array<ASTAttr>,
   parent: ASTElement | void
 ): ASTElement {
   return {
-    type: 1,
-    tag,
-    attrsList: attrs,
-    attrsMap: makeAttrsMap(attrs),
+    type: 1, // AST 元素类型
+    tag, // 标签名
+    attrsList: attrs, // 属性列表
+    attrsMap: makeAttrsMap(attrs), // 属性映射表
     rawAttrsMap: {},
-    parent,
-    children: []
+    parent, // 父的 AST 元素
+    children: [] // 子 AST 元素集合
   }
 }
 
